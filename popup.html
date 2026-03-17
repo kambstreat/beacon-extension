@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drive Folder Reader</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="flex-row">
+        <h1>Drive Folder Reader</h1>
+        <button id="signout-btn" class="btn btn-link hidden">Sign out</button>
+      </div>
+      <p class="subtitle">Access documents from your Google Drive folder</p>
+    </header>
+
+    <div id="auth-section" class="section">
+      <label for="api-key-input">Landing AI API Key</label>
+      <input type="password" id="api-key-input" placeholder="Landing AI API key (VISION_AGENT_API_KEY)">
+      <label for="yutori-key-input">Yutori API Key</label>
+      <input type="password" id="yutori-key-input" placeholder="Enter your Yutori API key">
+      <button id="auth-btn" class="btn btn-primary">Grant Drive Access</button>
+      <p class="hint">Sign in with Google to extract document data and autofill forms</p>
+    </div>
+
+    <div id="setup-section" class="section hidden">
+      <div class="folder-card">
+        <div class="folder-card-icon">📁</div>
+        <div class="folder-card-info">
+          <div class="folder-card-name">Yutori</div>
+          <div class="folder-card-hint">Upload your documents to this folder</div>
+        </div>
+        <a id="open-folder-link" href="#" target="_blank" class="btn btn-link">Open ↗</a>
+      </div>
+      <button id="load-btn" class="btn btn-secondary">Load Documents</button>
+    </div>
+
+    <div id="documents-section" class="section hidden">
+      <div class="flex-row">
+        <h2>Documents</h2>
+        <button id="back-to-setup-btn" class="btn btn-link">← Back</button>
+      </div>
+      <div id="documents-list" class="documents-list"></div>
+    </div>
+
+    <div id="content-section" class="section hidden">
+      <div class="flex-row">
+        <h2 id="content-title" class="content-title"></h2>
+        <button id="back-btn" class="btn btn-link">← Back</button>
+      </div>
+      <div id="content-body" class="content-body json-viewer"></div>
+      <button id="autofill-btn" class="btn btn-primary" style="margin-top:12px;width:100%">Autofill Form on Current Page</button>
+      <div id="autofill-status" class="hint hidden"></div>
+    </div>
+
+    <div id="error-message" class="error hidden"></div>
+    <div id="loading" class="loading hidden">Loading...</div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

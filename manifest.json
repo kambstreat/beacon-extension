@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Google Drive Folder Reader",
+  "version": "1.0.0",
+  "description": "Request permission to read a Google Drive folder and access documents",
+  "permissions": [
+    "identity",
+    "storage",
+    "sidePanel",
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.googleapis.com/*",
+    "https://www.google.com/*",
+    "https://api.va.landing.ai/*",
+    "https://api.yutori.com/*",
+    "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "oauth2": {
+    "client_id": "54213658700-06joqhgbggtv93ok7444b0teha8kvric.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/drive.metadata.readonly"
+    ]
+  },
+  "action": {},
+  "side_panel": {
+    "default_path": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
