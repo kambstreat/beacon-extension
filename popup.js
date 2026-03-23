@@ -10,11 +10,27 @@ document.addEventListener('DOMContentLoaded', () => {
   const loading = document.getElementById('loading');
   const openFolderLink = document.getElementById('open-folder-link');
   const signoutBtn = document.getElementById('signout-btn');
-  const apiKeyInput = document.getElementById('api-key-input');
-  const yutoriKeyInput = document.getElementById('yutori-key-input');
+  const proxyUrlInput = document.getElementById('proxy-url-input');
   const autofillBtn = document.getElementById('autofill-btn');
   const autofillStatus = document.getElementById('autofill-status');
   let lastExtraction = null;
+
+  function trimBaseUrl(s) {
+    return (s || '').trim().replace(/\/$/, '');
+  }
+
+  /** Saved URL, else field value, else defaults.js constant. */
+  function resolveBeaconApiBaseUrl(savedUrl) {
+    const fromInput = trimBaseUrl(proxyUrlInput.value);
+    if (fromInput) return fromInput;
+    const fromStorage = trimBaseUrl(savedUrl);
+    if (fromStorage) return fromStorage;
+    if (typeof BEACON_API_DEFAULT_BASE_URL !== 'undefined') {
+      const d = trimBaseUrl(BEACON_API_DEFAULT_BASE_URL);
+      if (d) return d;
+    }
+    return '';
+  }
 
   function setSignedIn(isSignedIn) {
     signoutBtn.classList.toggle('hidden', !isSignedIn);
@@ -39,6 +55,19 @@ document.addEventListener('DOMContentLoaded', () => {
     contentSection.classList.add('hidden');
   }
 
+  // Pre-fill API URL: saved value, else default from defaults.js
+  chrome.storage.local.get(['beaconApiBaseUrl'], (r) => {
+    const saved = trimBaseUrl(r.beaconApiBaseUrl);
+    const def =
+      typeof BEACON_API_DEFAULT_BASE_URL !== 'undefined'
+        ? trimBaseUrl(BEACON_API_DEFAULT_BASE_URL)
+        : '';
+    proxyUrlInput.value = saved || def;
+    if (!saved && def) {
+      proxyUrlInput.placeholder = `${def} (from defaults.js)`;
+    }
+  });
+
   // Check if already authenticated and folder exists
   chrome.storage.local.get(['isAuthenticated', 'appFolderId'], (result) => {
     if (result.isAuthenticated && result.appFolderId) {
@@ -50,14 +79,16 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('auth-btn').addEventListener('click', async () => {
-    const apiKey = apiKeyInput.value.trim();
-    const yutoriKey = yutoriKeyInput.value.trim();
-    if (!apiKey) {
-      showError('Please enter your Landing AI API key');
+    const { beaconApiBaseUrl: stored } = await chrome.storage.local.get('beaconApiBaseUrl');
+    const beaconApiBaseUrl = resolveBeaconApiBaseUrl(stored);
+    if (!beaconApiBaseUrl) {
+      showError('Set BEACON_API_DEFAULT_BASE_URL in defaults.js or enter the Beacon API base URL.');
       return;
     }
-    if (!yutoriKey) {
-      showError('Please enter your Yutori API key');
+    try {
+      new URL(beaconApiBaseUrl);
+    } catch {
+      showError('Invalid Beacon API URL. Check defaults.js or the field (e.g. http://127.0.0.1:8787).');
       return;
     }
 
@@ -78,7 +109,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      chrome.storage.local.set({ isAuthenticated: true, appFolderId: folderRes.folderId, landingAiKey: apiKey, yutoriKey });
+      chrome.storage.local.set({
+        isAuthenticated: true,
+        appFolderId: folderRes.folderId,
+        beaconApiBaseUrl
+      });
       openFolderLink.href = `https://drive.google.com/drive/folders/${folderRes.folderId}`;
       authSection.classList.add('hidden');
       setSignedIn(true);
@@ -93,12 +128,21 @@ document.addEventListener('DOMContentLoaded', () => {
     hideError();
     try {
       await chrome.runtime.sendMessage({ action: 'signOut' });
-      chrome.storage.local.remove(['isAuthenticated', 'appFolderId', 'landingAiKey', 'yutoriKey']);
+      // Keep beaconApiBaseUrl so you don't re-type the API URL after sign-out
+      chrome.storage.local.remove(['isAuthenticated', 'appFolderId']);
       setSignedIn(false);
       setupSection.classList.add('hidden');
       documentsSection.classList.add('hidden');
       contentSection.classList.add('hidden');
       authSection.classList.remove('hidden');
+      chrome.storage.local.get(['beaconApiBaseUrl'], (r) => {
+        const saved = trimBaseUrl(r.beaconApiBaseUrl);
+        const def =
+          typeof BEACON_API_DEFAULT_BASE_URL !== 'undefined'
+            ? trimBaseUrl(BEACON_API_DEFAULT_BASE_URL)
+            : '';
+        proxyUrlInput.value = saved || def;
+      });
     } catch (err) {
       showError(err.message || 'Failed to sign out');
     }
@@ -144,9 +188,10 @@ document.addEventListener('DOMContentLoaded', () => {
     autofillStatus.classList.remove('hidden');
 
     try {
-      const { yutoriKey } = await chrome.storage.local.get('yutoriKey');
-      if (!yutoriKey) {
-        showError('Yutori API key not found. Please sign out and sign in again.');
+      const { beaconApiBaseUrl } = await chrome.storage.local.get('beaconApiBaseUrl');
+      const apiBase = resolveBeaconApiBaseUrl(beaconApiBaseUrl);
+      if (!apiBase) {
+        showError('Beacon API URL missing. Set defaults.js or open setup and save the URL.');
         return;
       }
       const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
@@ -154,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await chrome.runtime.sendMessage({
         action: 'autofill',
         extraction: lastExtraction,
-        yutoriKey,
+        beaconApiBaseUrl: apiBase,
         tabId: tab.id
       });
       if (response.success) {
@@ -173,7 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderDocuments(items) {
     documentsList.innerHTML = '';
     if (!items || items.length === 0) {
-      documentsList.innerHTML = '<div class="document-item" style="cursor:default"><span>No documents found. Upload files to your Yutori folder.</span></div>';
+      documentsList.innerHTML = '<div class="document-item" style="cursor:default"><span>No documents found. Upload files to your Beacon folder.</span></div>';
       return;
     }
 
@@ -191,13 +236,11 @@ document.addEventListener('DOMContentLoaded', () => {
         hideError();
         showLoading(true);
         try {
-          const { landingAiKey } = await chrome.storage.local.get('landingAiKey');
           const response = await chrome.runtime.sendMessage({
             action: 'parseDocument',
             fileId: item.id,
             mimeType: item.mimeType,
-            fileName: item.name,
-            landingAiKey
+            fileName: item.name
           });
           if (response.success) {
             lastExtraction = response.extraction;

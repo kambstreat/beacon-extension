@@ -3,24 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Drive Folder Reader</title>
+  <title>Beacon</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="container">
     <header>
       <div class="flex-row">
-        <h1>Drive Folder Reader</h1>
+        <h1>Beacon</h1>
         <button id="signout-btn" class="btn btn-link hidden">Sign out</button>
       </div>
-      <p class="subtitle">Access documents from your Google Drive folder</p>
+      <p class="subtitle">Immigration forms &amp; documents — Drive, extract, autofill</p>
     </header>
 
     <div id="auth-section" class="section">
-      <label for="api-key-input">Landing AI API Key</label>
-      <input type="password" id="api-key-input" placeholder="Landing AI API key (VISION_AGENT_API_KEY)">
-      <label for="yutori-key-input">Yutori API Key</label>
-      <input type="password" id="yutori-key-input" placeholder="Enter your Yutori API key">
+      <label for="proxy-url-input">Beacon API base URL <span class="hint" style="font-weight:normal">(optional if set in defaults.js)</span></label>
+      <input type="url" id="proxy-url-input" placeholder="Uses default from defaults.js when empty">
+      <p class="hint" style="font-size:12px;margin-top:4px">
+        The Yutori API key stays on your server. Edit <code>defaults.js</code> for a fixed URL, or override here. No trailing slash.
+      </p>
       <button id="auth-btn" class="btn btn-primary">Grant Drive Access</button>
       <p class="hint">Sign in with Google to extract document data and autofill forms</p>
     </div>
@@ -29,7 +30,7 @@
       <div class="folder-card">
         <div class="folder-card-icon">📁</div>
         <div class="folder-card-info">
-          <div class="folder-card-name">Yutori</div>
+          <div class="folder-card-name">Beacon</div>
           <div class="folder-card-hint">Upload your documents to this folder</div>
         </div>
         <a id="open-folder-link" href="#" target="_blank" class="btn btn-link">Open ↗</a>
@@ -58,6 +59,7 @@
     <div id="error-message" class="error hidden"></div>
     <div id="loading" class="loading hidden">Loading...</div>
   </div>
+  <script src="defaults.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

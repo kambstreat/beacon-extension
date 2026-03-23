@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Google Drive Folder Reader",
+  "name": "Beacon",
   "version": "1.0.0",
-  "description": "Request permission to read a Google Drive folder and access documents",
+  "description": "Beacon — documents in Drive, autofill for immigration and other web forms (Yutori + Landing AI)",
   "permissions": [
     "identity",
     "storage",
@@ -14,8 +14,8 @@
   "host_permissions": [
     "https://www.googleapis.com/*",
     "https://www.google.com/*",
-    "https://api.va.landing.ai/*",
-    "https://api.yutori.com/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*",
     "<all_urls>"
   ],
   "content_scripts": [
@@ -27,6 +27,8 @@
   "oauth2": {
     "client_id": "54213658700-06joqhgbggtv93ok7444b0teha8kvric.apps.googleusercontent.com",
     "scopes": [
+      "openid",
+      "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/drive.file",
       "https://www.googleapis.com/auth/drive.readonly",
       "https://www.googleapis.com/auth/drive.metadata.readonly"

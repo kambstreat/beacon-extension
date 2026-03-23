@@ -1,3 +1,5 @@
+importScripts('defaults.js');
+
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
 
 chrome.action.onClicked.addListener((tab) => {
@@ -22,12 +24,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
   if (message.action === 'autofill') {
-    autofill(message.extraction, message.yutoriKey, message.tabId)
+    const apiBase = message.beaconApiBaseUrl;
+    autofill(message.extraction, apiBase, message.tabId)
       .then(sendResponse).catch(err => sendResponse({ success: false, error: err.message }));
     return true;
   }
   if (message.action === 'parseDocument') {
-    parseDocument(message.fileId, message.mimeType, message.fileName, message.landingAiKey)
+    parseDocument(message.fileId, message.mimeType, message.fileName)
       .then(sendResponse).catch(err => sendResponse({ success: false, error: err.message }));
     return true;
   }
@@ -87,111 +90,60 @@ async function driveApiRequest(url, token) {
   return response.json();
 }
 
-const LANDING_AI_BASE = 'https://api.va.landing.ai';
-
-async function parseDocument(fileId, mimeType, fileName, landingAiKey) {
-  const driveToken = await getAccessToken();
-
-  // Step 1: Download file from Google Drive as a blob
-  const googleDocExportTypes = {
-    'application/vnd.google-apps.document': 'application/pdf',
-    'application/vnd.google-apps.spreadsheet': 'application/pdf',
-    'application/vnd.google-apps.presentation': 'application/pdf',
-  };
-
-  let downloadUrl;
-  let downloadFileName = fileName;
-  if (googleDocExportTypes[mimeType]) {
-    downloadUrl = `${DRIVE_API_BASE}/files/${fileId}/export?mimeType=application/pdf`;
-    downloadFileName = fileName.replace(/\.[^.]+$/, '') + '.pdf';
-  } else {
-    downloadUrl = `${DRIVE_API_BASE}/files/${fileId}?alt=media`;
-  }
-
-  const driveRes = await fetch(downloadUrl, {
-    headers: { Authorization: `Bearer ${driveToken}` }
-  });
-  if (!driveRes.ok) {
-    const errData = await driveRes.json().catch(() => ({}));
-    throw new Error(errData.error?.message || `Drive download failed: ${driveRes.status}`);
-  }
-  const fileBlob = await driveRes.blob();
-
-  // Step 2: Send to Landing AI ADE parse endpoint
-  const formData = new FormData();
-  formData.append('document', fileBlob, downloadFileName);
-  formData.append('model', 'dpt-2-latest');
-
-  const parseRes = await fetch(`${LANDING_AI_BASE}/v1/ade/parse`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${landingAiKey}`
-    },
-    body: formData
-  });
-
-  if (!parseRes.ok) {
-    const errData = await parseRes.json().catch(() => ({}));
-    throw new Error(errData.message || errData.detail || `Landing AI parse error: ${parseRes.status}`);
-  }
-
-  const parseResult = await parseRes.json();
-  const markdown = parseResult.markdown;
-
-  if (!markdown) {
-    return { success: true, chunks: parseResult.chunks ?? parseResult, extraction: null };
-  }
-
-  // Step 3: Extract structured fields from the parsed markdown
-  const schema = JSON.stringify({
-    type: 'object',
-    properties: {
-      data: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            key: { type: 'string' },
-            value: { type: 'string' }
-          }
-        }
-      }
-    }
-  });
-
-  const extractForm = new FormData();
-  extractForm.append('markdown', markdown);
-  extractForm.append('schema', schema);
-
-  const extractRes = await fetch(`${LANDING_AI_BASE}/v1/ade/extract`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${landingAiKey}`
-    },
-    body: extractForm
-  });
-
-  if (!extractRes.ok) {
-    const errData = await extractRes.json().catch(() => ({}));
-    throw new Error(errData.message || errData.detail || `Landing AI extract error: ${extractRes.status}`);
-  }
-
-  const extractResult = await extractRes.json();
-  const rawExtraction = extractResult.extraction ?? extractResult;
-
-  // Convert [{key, value}] array to flat object { key: value }
-  const extraction = {};
-  const pairs = rawExtraction?.data ?? rawExtraction;
-  if (Array.isArray(pairs)) {
-    pairs.forEach(({ key, value }) => {
-      if (key) extraction[key] = value ?? '';
-    });
-  }
-
-  return { success: true, extraction };
+function trimBeaconBase(s) {
+  return (s || '').trim().replace(/\/$/, '');
 }
 
-const APP_FOLDER_NAME = 'Yutori';
+function getBeaconApiBaseUrlFromStorage() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['beaconApiBaseUrl'], (r) => {
+      const s = trimBeaconBase(r.beaconApiBaseUrl);
+      if (s) return resolve(s);
+      const d =
+        typeof BEACON_API_DEFAULT_BASE_URL !== 'undefined'
+          ? trimBeaconBase(BEACON_API_DEFAULT_BASE_URL)
+          : '';
+      resolve(d);
+    });
+  });
+}
+
+/**
+ * Parse + extract via beacon-api (Landing AI key stays on server).
+ */
+async function parseDocument(fileId, mimeType, fileName) {
+  const base = await getBeaconApiBaseUrlFromStorage();
+  if (!base) {
+    throw new Error('Beacon API base URL is not set. Use defaults.js or sign in with a saved URL.');
+  }
+  const googleToken = await getAccessToken();
+
+  const res = await fetch(`${base}/v1/landing/parse-document`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${googleToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ fileId, mimeType, fileName })
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      data.message || data.error || `Parse failed (${res.status})`
+    );
+  }
+  if (data.success === false) {
+    throw new Error(data.error || 'Parse failed');
+  }
+  return {
+    success: true,
+    extraction: data.extraction ?? null,
+    chunks: data.chunks
+  };
+}
+
+const APP_FOLDER_NAME = 'Beacon';
 
 async function getOrCreateAppFolder() {
   const token = await getAccessToken();
@@ -247,10 +199,21 @@ async function convertToWebP(dataUrl) {
   });
 }
 
-const YUTORI_API_BASE = 'https://api.yutori.com/v1';
 const MAX_TURNS = 5;
 
-async function autofill(extraction, yutoriKey, tabId) {
+/**
+ * Calls your beacon-api (or compatible backend) with the user's Google OAuth token.
+ * The Yutori API key stays on the server — see /beacon-api/README.md
+ */
+async function autofill(extraction, beaconApiBaseUrl, tabId) {
+  let base = (beaconApiBaseUrl || '').trim().replace(/\/$/, '');
+  if (!base && typeof BEACON_API_DEFAULT_BASE_URL !== 'undefined') {
+    base = String(BEACON_API_DEFAULT_BASE_URL).trim().replace(/\/$/, '');
+  }
+  if (!base) {
+    throw new Error('Beacon API base URL is not set. Edit defaults.js or enter it in the sidebar.');
+  }
+  const googleToken = await getAccessToken();
   const fields = Object.entries(extraction)
     .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
     .join('\n');
@@ -286,10 +249,10 @@ async function autofill(extraction, yutoriKey, tabId) {
 
     let data;
     try {
-      const res = await fetch(`${YUTORI_API_BASE}/chat/completions`, {
+      const res = await fetch(`${base}/v1/chat/completions`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${yutoriKey}`,
+          Authorization: `Bearer ${googleToken}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(requestBody),
